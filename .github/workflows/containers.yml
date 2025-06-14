@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      distros:
+        description: "Distribution to use as the base docker image (debian or alpine)"
+        default: "debian alpine"
+        required: false
       ref:
         description: "Tag or branch to deploy (empty for main)"
         default: "main"
@@ -81,26 +85,30 @@ jobs:
           JSON_ROOTFS='['
           FIRST_ROOTFS=1
 
-          while read -r line;
-          do
-            TARGET=$(echo "$line" | cut -d " " -f 1)
-            ARCH=$(echo "$line" | cut -d " " -f 2)
+          for DISTRO in ${{ github.event.inputs.distros }}; do
 
-            [[ $FIRST_IB -ne 1 ]] && JSON_IB="$JSON_IB"','
-            FIRST_IB=0
+            while read -r line;
+            do
+              TARGET=$(echo "$line" | cut -d " " -f 1)
+              ARCH=$(echo "$line" | cut -d " " -f 2)
 
-            JSON_IB="$JSON_IB"'{"target":"'"$TARGET"'"}'
+              [[ $FIRST_IB -ne 1 ]] && JSON_IB="$JSON_IB"','
+              FIRST_IB=0
 
-            case "$TARGET" in
-              x86/*|arm*|malta/be|mvebu/cortexa9)
-                [[ $FIRST_ROOTFS -ne 1 ]] && JSON_ROOTFS="$JSON_ROOTFS"','
-                FIRST_ROOTFS=0
+              JSON_IB="$JSON_IB"'{"target":"'"$TARGET"'"}'
 
-                JSON_ROOTFS="$JSON_ROOTFS"'{"target":"'"$TARGET"'","arch":"'"$ARCH"'"}'
-              ;;
-            esac
+              case "$TARGET" in
+                x86/*|arm*|malta/be|mvebu/cortexa9)
+                  [[ $FIRST_ROOTFS -ne 1 ]] && JSON_ROOTFS="$JSON_ROOTFS"','
+                  FIRST_ROOTFS=0
 
-          done <<< $(perl ./scripts/dump-target-info.pl targets 2>/dev/null | ([[ -n "$TARGET_FILTER" ]] && grep -w "$TARGET_FILTER" || cat))
+                  JSON_ROOTFS="$JSON_ROOTFS"'{"distro": "'"$DISTRO"'", "target":"'"$TARGET"'","arch":"'"$ARCH"'"}'
+                ;;
+              esac
+
+            done <<< $(perl ./scripts/dump-target-info.pl targets 2>/dev/null | ([[ -n "$TARGET_FILTER" ]] && grep -w "$TARGET_FILTER" || cat))
+          
+          done
 
           JSON_IB='{"include":'"$JSON_IB"']}'
           echo -e "\n---- imagebuilders ----\n"
@@ -118,17 +126,21 @@ jobs:
           JSON='['
           FIRST=1
 
-          while read -r line;
-          do
-            ARCH=$(echo "$line" | cut -d " " -f 1)
-            [ -z "$TARGET_FILTER" ] && TARGET=$(echo "$line" | cut -d " " -f 2) || TARGET="$TARGET_FILTER"
-            TARGETS=$(echo "$line" | cut -d " " -f 2- | sed -e 's/ /\\n/g')
+          for DISTRO in ${{ github.event.inputs.distros }}; do
 
-            [[ $FIRST -ne 1 ]] && JSON="$JSON"','
-            FIRST=0
+            while read -r line;
+            do
+              ARCH=$(echo "$line" | cut -d " " -f 1)
+              [ -z "$TARGET_FILTER" ] && TARGET=$(echo "$line" | cut -d " " -f 2) || TARGET="$TARGET_FILTER"
+              TARGETS=$(echo "$line" | cut -d " " -f 2- | sed -e 's/ /\\n/g')
 
-            JSON="$JSON"'{"arch":"'"$ARCH"'","target":"'"$TARGET"'","tags":"'"$ARCH"'\n'"$TARGETS"'"}'
-          done <<< $(perl ./scripts/dump-target-info.pl architectures 2>/dev/null | ([[ -n "$TARGET_FILTER" ]] && grep -w "$TARGET_FILTER" || cat))
+              [[ $FIRST -ne 1 ]] && JSON="$JSON"','
+              FIRST=0
+
+              JSON="$JSON"'{"distro":"'"$DISTRO"'", "arch":"'"$ARCH"'","target":"'"$TARGET"'","tags":"'"$ARCH"'\n'"$TARGETS"'"}'
+            done <<< $(perl ./scripts/dump-target-info.pl architectures 2>/dev/null | ([[ -n "$TARGET_FILTER" ]] && grep -w "$TARGET_FILTER" || cat))
+
+          done
 
           JSON='{"include":'"$JSON"']}'
           echo -e "\n---- sdks ----\n"
@@ -181,9 +193,9 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ghcr.io/openwrt/imagebuilder
-            docker.io/openwrt/imagebuilder
-            quay.io/openwrt/imagebuilder
+            ghcr.io/openwrt/imagebuilder${{ matrix.distro == 'alpine' && '-alpine' || '' }}
+            docker.io/openwrt/imagebuilder${{ matrix.distro == 'alpine' && '-alpine' || '' }}
+            quay.io/openwrt/imagebuilder${{ matrix.distro == 'alpine' && '-alpine' || '' }}
           flavor: |
             latest=false
             prefix=${{ github.event.inputs.prefix }}
@@ -202,6 +214,7 @@ jobs:
           push: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          file: ${{ matrix.distro == 'debian' && 'Dockerfile' || 'alpine/Dockerfile' }}
           build-args: |
             DOWNLOAD_FILE=imagebuilder-.*x86_64.tar.[xz|zst]
             VERSION_PATH=${{ needs.generate_matrix.outputs.version_path }}
@@ -273,9 +286,9 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ghcr.io/openwrt/sdk
-            docker.io/openwrt/sdk
-            quay.io/openwrt/sdk
+            ghcr.io/openwrt/sdk${{ matrix.distro == 'alpine' && '-alpine' || '' }}
+            docker.io/openwrt/sdk${{ matrix.distro == 'alpine' && '-alpine' || '' }}
+            quay.io/openwrt/sdk${{ matrix.distro == 'alpine' && '-alpine' || '' }}
           flavor: |
             latest=false
             prefix=${{ github.event.inputs.prefix }}
@@ -287,9 +300,9 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ghcr.io/openwrt/sdk
-            docker.io/openwrt/sdk
-            quay.io/openwrt/sdk
+            ghcr.io/openwrt/sdk${{ matrix.distro == 'alpine' && '-alpine' || '' }}
+            docker.io/openwrt/sdk${{ matrix.distro == 'alpine' && '-alpine' || '' }}
+            quay.io/openwrt/sdk${{ matrix.distro == 'alpine' && '-alpine' || '' }}
           flavor: |
             latest=false
             prefix=${{ github.event.inputs.prefix }}
@@ -302,9 +315,9 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ghcr.io/openwrt/sdk
-            docker.io/openwrt/sdk
-            quay.io/openwrt/sdk
+            ghcr.io/openwrt/sdk${{ matrix.distro == 'alpine' && '-alpine' || '' }}
+            docker.io/openwrt/sdk${{ matrix.distro == 'alpine' && '-alpine' || '' }}
+            quay.io/openwrt/sdk${{ matrix.distro == 'alpine' && '-alpine' || '' }}
           flavor: |
             latest=false
             prefix=${{ github.event.inputs.prefix }}
@@ -317,9 +330,9 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ghcr.io/openwrt/sdk
-            docker.io/openwrt/sdk
-            quay.io/openwrt/sdk
+            ghcr.io/openwrt/sdk${{ matrix.distro == 'alpine' && '-alpine' || '' }}
+            docker.io/openwrt/sdk${{ matrix.distro == 'alpine' && '-alpine' || '' }}
+            quay.io/openwrt/sdk${{ matrix.distro == 'alpine' && '-alpine' || '' }}
           flavor: |
             latest=false
             prefix=${{ github.event.inputs.prefix }}
@@ -331,9 +344,9 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ghcr.io/openwrt/sdk
-            docker.io/openwrt/sdk
-            quay.io/openwrt/sdk
+            ghcr.io/openwrt/sdk${{ matrix.distro == 'alpine' && '-alpine' || '' }}
+            docker.io/openwrt/sdk${{ matrix.distro == 'alpine' && '-alpine' || '' }}
+            quay.io/openwrt/sdk${{ matrix.distro == 'alpine' && '-alpine' || '' }}
           tags: latest
 
       - name: Build
