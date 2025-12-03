@@ -237,7 +237,7 @@ jobs:
           docker run ${{ steps.build.outputs.imageid }} \
           bash -c ' \
             cd $HOME && \
-            bash setup.sh && \
+            (stat Makefile || bash setup.sh) && \
             make image PACKAGES=coreutils-echo \
             '
 
