@@ -31,6 +31,9 @@ rm -vrf sha256sums{,_min,.asc} keys/
 tar xf "$file_name" --strip=1 --no-same-owner -C .
 rm -vrf "$file_name"
 
+# alpine
+mkdir /builder/tmp
+
 # setup packages repositories
 # due to not selecting CONFIG_IB_STANDALONE in the buildroot:
 # - all kmods are already included in /builder/packages
