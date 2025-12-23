@@ -2,7 +2,7 @@
 
 # Example of usage:
 #
-# export REF=openwrt-24.10 TARGET=ath79/mikrotik && REF=$REF nohup ./build.br.sh > nohup.$REF &
+# export REF=openwrt-24.10 TARGET=ath79/generic && REF=$REF TARGET=$TARGET nohup ./build.br.sh > nohup.$REF &
 
 BASE_CONTAINER="docker.io/agave0/openwrt-buildroot"
 REF=${REF:-main}

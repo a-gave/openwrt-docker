@@ -1,0 +1,135 @@
+FROM debian:11-slim
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+USER root
+
+RUN \
+	apt-get update && \
+	apt-get install -y --no-install-recommends \
+		build-essential \
+		ccache \
+		curl \
+		file \
+		gawk \
+		g++-multilib \
+		gcc-multilib \
+		genisoimage \
+		git-core \
+		gosu \
+		libdw-dev \
+		libelf-dev \
+		libncurses5-dev \
+		locales \
+		pv \
+		pwgen \
+		python3 \
+		python3-venv \
+		python3-pip \
+		python3-pyelftools \
+		python3-cryptography \
+		qemu-utils \
+		rsync \
+		signify-openbsd \
+		subversion \
+		swig \
+		unzip \
+		wget \
+    zstd && \
+	apt-get clean && \
+	rm -rf /var/lib/apt/lists/* && \
+	localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
+
+ENV USER=builder
+
+RUN adduser $USER \
+  && mkdir -p /builder \
+  && chown -R $USER:$USER /builder
+
+USER $USER
+
+ARG OPENWRT_VERSION=24.10.4
+ENV OPENWRT_VERSION=$OPENWRT_VERSION
+
+RUN cd /tmp/ && wget https://github.com/openwrt/openwrt/archive/refs/tags/${OPENWRT_VERSION}.tar.gz \
+  && tar -xvf ${OPENWRT_VERSION}.tar.gz \
+  && mv openwrt-*/* /builder \
+  && rm -rf /tmp/*
+
+WORKDIR /builder
+
+COPY tools_24.patch ./
+
+RUN git apply tools_24.patch
+
+RUN cp feeds.conf.default feeds.conf \
+  && sed -i 's/git.openwrt.org\/\(project\|feed\)/github.com\/openwrt/g' feeds.conf \
+  && ./scripts/feeds update -a \
+  && ./scripts/feeds install -a
+
+RUN echo " \n\
+src-git libremesh https://github.com/libremesh/lime-packages.git;master \n\
+src-git profiles https://github.com/libremesh/network-profiles.git" >> feeds.conf \
+  && ./scripts/feeds update libremesh profiles \
+  && ./scripts/feeds install -a
+
+# download kernel (121MB) and default_packages (59MB) and archives related to lime-packages
+RUN echo "\n\
+\nCONFIG_DEVEL=y \
+\nCONFIG_ALL_KMODS=y \
+\nCONFIG_PACKAGE_profile-libremesh-suggested-packages=y" > .config \
+  && make defconfig \
+  && make target/linux/download \
+  && make package/download \
+  && rm -rf .config staging_dir/target* staging_dir/toolchain* bin/*
+
+ARG TARGET
+ENV TARGET=$TARGET
+
+# download tools and toolchain, configure and build
+RUN export SUBTARGET=$(echo $TARGET | cut -d '/' -f2) \
+  && export TARGET=$(echo $TARGET | cut -d '/' -f1) \
+  && export VERSION_PATH=releases/$(echo $OPENWRT_VERSION | sed 's|^v||') \
+  && wget -nd --no-parent \
+    -r https://openwrt.mirror.garr.it/openwrt/$VERSION_PATH/targets/$TARGET/$SUBTARGET/ \
+    -A 'openwrt-sdk*.tar.zst' \
+  && tar -xvf openwrt-sdk*.tar.zst \
+  && rm -rf staging_dir/host \
+  && mv openwrt-sdk*/staging_dir/host staging_dir/ \
+  && mv openwrt-sdk*/staging_dir/toolchain* staging_dir/ \
+  && rm -rf openwrt-sdk* \
+  && sed -i '/call\ BuildTarget/i \
+FEATURES += low_mem small_flash' ./target/linux/${TARGET}/Makefile \
+  && echo "\n\
+\nCONFIG_DEVEL=y \
+\nCONFIG_EXTERNAL_TOOLS=y \
+\nCONFIG_ALL_KMODS=y \
+\nCONFIG_ALL_NONSHARED=y \
+\nCONFIG_TARGET_${TARGET}=y \
+\nCONFIG_TARGET_${TARGET}_${SUBTARGET}=y \
+\nCONFIG_TARGET_ROOTFS_INITRAMFS=y \
+\nCONFIG_TARGET_MULTI_PROFILE=y \
+\nCONFIG_TARGET_PER_DEVICE_ROOTFS=y \
+\nCONFIG_IMAGEOPT=y \
+\nCONFIG_VERSIONOPT=y \
+\nCONFIG_IB=y \
+\nCONFIG_PACKAGE_ATH_DYNACK=y " >> .config \
+  && make defconfig \
+  && EXT_TOOLCHAIN_NAME=$(ls staging_dir/ | grep toolchain) \
+  && ./scripts/ext-toolchain.sh \
+    --toolchain staging_dir/$EXT_TOOLCHAIN_NAME \
+    --overwrite-config --config $TARGET/$SUBTARGET \ 
+  && echo "\n\
+\nCONFIG_KERNEL_BUILD_DOMAIN=\"buildhost\" \
+\n# CONFIG_VERSION_CODE_FILENAMES is not set \
+\n# CONFIG_FEED_libremesh is not set \
+\n# CONFIG_FEED_profiles is not set \
+\n# CONFIG_PACKAGE_dnsmasq is not set \
+\n# CONFIG_PACKAGE_odhcpd-ipv6only is not set \
+\n# CONFIG_PACKAGE_ppp is not set \
+\n# CONFIG_PACKAGE_ppp-mod-pppoe is not set \
+\nCONFIG_PACKAGE_kmod-ppp=m \
+\nCONFIG_PACKAGE_kmod-pppoe=m \
+\nCONFIG_PACKAGE_kmod-pppox=m \
+\nCONFIG_PACKAGE_profile-libremesh-suggested-packages=y" >> .config \
+  && make defconfig
