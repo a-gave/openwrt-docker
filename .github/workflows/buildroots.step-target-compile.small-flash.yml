@@ -1,4 +1,4 @@
-name: Build and push ext-tools-toolchain-downloads-configure buildroot containers
+name: Build and push step-target-compile ext-tools-toolchain small-flash
 run-name: ${{ inputs.ref }} ${{ inputs.target }}
 
 on:
@@ -149,7 +149,7 @@ jobs:
           flavor: |
             latest=false
             prefix=${{ github.event.inputs.prefix }}
-            suffix=${{ matrix.distro == 'alpine' && '-alpine' || '' }}-ext-tools-toolchain-downloads-configure
+            suffix=${{ matrix.distro == 'alpine' && '-alpine' || '' }}-step-target-compile
           tags: |
             ${{ matrix.target }}-${{ needs.generate_matrix.outputs.ref }}
             ${{ matrix.target }}-${{ needs.generate_matrix.outputs.version }}
@@ -165,7 +165,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          file: ${{ matrix.distro == 'debian' && 'Dockerfile.buildroot.ext_tools-toolchain-downloads-configure' || 'Dockerfile.buildroot.ext_tools-toolchain-downloads-configure.alpine' }}
+          file: ${{ matrix.distro == 'debian' && 'Dockerfile.buildroot.step-target-compile.small-flash' || 'Dockerfile.buildroot.step-target-compile.small-flash.alpine' }}
           build-args: |
             OPENWRT_VERSION=v${{ needs.generate_matrix.outputs.version }}
             TARGET=${{ matrix.target }}

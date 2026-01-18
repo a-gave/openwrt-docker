@@ -48,15 +48,12 @@ RUN adduser $USER \
 
 USER $USER
 
-ARG OPENWRT_VERSION=24.10.4
+ARG OPENWRT_VERSION=24.10.5
 ENV OPENWRT_VERSION=$OPENWRT_VERSION
 
-RUN cd /tmp/ && wget https://github.com/openwrt/openwrt/archive/refs/tags/${OPENWRT_VERSION}.tar.gz \
-  && tar -xvf ${OPENWRT_VERSION}.tar.gz \
-  && mv openwrt-*/* /builder \
-  && rm -rf /tmp/*
-
 WORKDIR /builder
+
+RUN git clone -b ${OPENWRT_VERSION} https://github.com/openwrt/openwrt .
 
 COPY tools_24.patch ./
 
@@ -64,13 +61,10 @@ RUN git apply tools_24.patch
 
 RUN cp feeds.conf.default feeds.conf \
   && sed -i 's/git.openwrt.org\/\(project\|feed\)/github.com\/openwrt/g' feeds.conf \
-  && ./scripts/feeds update -a \
-  && ./scripts/feeds install -a
-
-RUN echo " \n\
+  && echo " \n\
 src-git libremesh https://github.com/libremesh/lime-packages.git;master \n\
 src-git profiles https://github.com/libremesh/network-profiles.git" >> feeds.conf \
-  && ./scripts/feeds update libremesh profiles \
+  && ./scripts/feeds update -a \
   && ./scripts/feeds install -a
 
 # download kernel (121MB) and default_packages (59MB) and archives related to lime-packages
@@ -133,3 +127,5 @@ FEATURES += low_mem small_flash' ./target/linux/${TARGET}/Makefile \
 \nCONFIG_PACKAGE_kmod-pppox=m \
 \nCONFIG_PACKAGE_profile-libremesh-suggested-packages=y" >> .config \
   && make defconfig
+
+RUN make -j1 target/compile V=sc IGNORE_ERRRORS="n m"
