@@ -1,0 +1,11 @@
+ARG BASE_IMAGE="docker.io/agave0/openwrt-buildroot:ath79-generic-24.10.5-step-target-compile"
+
+FROM ${BASE_IMAGE}
+   
+RUN make -j1 package/compile V=sc IGNORE_ERRORS="n m"; \
+  make -j1 package/install V=sc IGNORE_ERRORS="n m"; \
+  make -j1 package/preconfig V=sc IGNORE_ERRORS="n m"; \
+  make -j1 target/install V=sc IGNORE_ERRORS="n m"; \
+  make -j1 package/index V=sc IGNORE_ERRORS="n m"; \
+  make -j1 json_overview_image_info  V=sc IGNORE_ERRORS="n m"; \
+	make -j1 checksum  V=sc IGNORE_ERRORS="n m";

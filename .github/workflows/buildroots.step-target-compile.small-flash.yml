@@ -1,4 +1,4 @@
-name: Build and push ext-tools-toolchain-downloads-configure buildroot containers
+name: Build and push step-target-compile ext-tools-toolchain small-flash
 run-name: ${{ inputs.ref }} ${{ inputs.target }}
 
 on:
@@ -83,12 +83,12 @@ jobs:
             while read -r line;
             do
               TARGET=$(echo "$line" | cut -d " " -f 1)
-              ARCH=$(echo "$line" | cut -d " " -f 2)
+              IMAGE_TAG=$VERSION$( [ $DISTRO == "debian" ] && echo "" || echo "-$DISTRO" )
 
               [[ $FIRST_BR -ne 1 ]] && JSON_BR="$JSON_BR"','
               FIRST_BR=0
 
-              JSON_BR="$JSON_BR"'{"distro": "'"$DISTRO"'", "target":"'"$TARGET"'"}'
+              JSON_BR="$JSON_BR"'{"distro": "'"$DISTRO"'", "target":"'"$TARGET"'", "image_tag": "'"$IMAGE_TAG"'"}'
 
             done <<< $(perl ./scripts/dump-target-info.pl targets 2>/dev/null | ([[ -n "$TARGET_FILTER" ]] && grep -w "$TARGET_FILTER" || cat))
           
@@ -149,7 +149,7 @@ jobs:
           flavor: |
             latest=false
             prefix=${{ github.event.inputs.prefix }}
-            suffix=${{ matrix.distro == 'alpine' && '-alpine' || '' }}-ext-tools-toolchain-downloads-configure
+            suffix=${{ matrix.distro == 'alpine' && '-alpine' || '' }}-step-target-compile
           tags: |
             ${{ matrix.target }}-${{ needs.generate_matrix.outputs.ref }}
             ${{ matrix.target }}-${{ needs.generate_matrix.outputs.version }}
@@ -157,7 +157,7 @@ jobs:
             ${{ matrix.target }},enable=${{ needs.generate_matrix.outputs.version == 'SNAPSHOT' }}
             latest,enable=${{ needs.generate_matrix.outputs.version == 'SNAPSHOT' && matrix.target == 'x86/64'}}
 
-      - name: Build and push
+      - name: Build and push target-compile
         id: build
         uses: docker/build-push-action@v6
         with:
@@ -165,10 +165,11 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          file: ${{ matrix.distro == 'debian' && 'Dockerfile.buildroot.ext_tools-toolchain-downloads-configure' || 'Dockerfile.buildroot.ext_tools-toolchain-downloads-configure.alpine' }}
+          file: ${{ matrix.distro == 'debian' && 'Dockerfile.buildroot.step-target-compile.small-flash' || 'Dockerfile.buildroot.step-target-compile.small-flash.alpine' }}
           build-args: |
-            OPENWRT_VERSION=v${{ needs.generate_matrix.outputs.version }}
+            BASE_IMAGE=docker.io/agave0/openwrt-buildroot:${{ matrix.image_tag }}-step-download
             TARGET=${{ matrix.target }}
+            OPENWRT_VERSION=v${{ needs.generate_matrix.outputs.version }}
 
       # - name: Smoke test
       #   run: |

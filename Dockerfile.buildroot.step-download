@@ -1,0 +1,78 @@
+FROM debian:11-slim
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+USER root
+
+RUN \
+	apt-get update && \
+	apt-get install -y --no-install-recommends \
+		build-essential \
+		ccache \
+		curl \
+		file \
+		gawk \
+		g++-multilib \
+		gcc-multilib \
+		genisoimage \
+		git-core \
+		gosu \
+		libdw-dev \
+		libelf-dev \
+		libncurses5-dev \
+		locales \
+		pv \
+		pwgen \
+		python3 \
+		python3-venv \
+		python3-pip \
+		python3-pyelftools \
+		python3-cryptography \
+		qemu-utils \
+		rsync \
+		signify-openbsd \
+		subversion \
+		swig \
+		unzip \
+		wget \
+    zstd && \
+	apt-get clean && \
+	rm -rf /var/lib/apt/lists/* && \
+	localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
+
+ENV USER=builder
+
+RUN adduser $USER \
+  && mkdir -p /builder \
+  && chown -R $USER:$USER /builder
+
+USER $USER
+
+ARG OPENWRT_VERSION=24.10.5
+ENV OPENWRT_VERSION=$OPENWRT_VERSION
+
+WORKDIR /builder
+
+RUN git clone -b ${OPENWRT_VERSION} https://github.com/openwrt/openwrt .
+
+COPY tools_24.patch ./
+
+RUN git apply tools_24.patch
+
+RUN cp feeds.conf.default feeds.conf \
+  && sed -i 's/git.openwrt.org\/\(project\|feed\)/github.com\/openwrt/g' feeds.conf \
+  && echo " \n\
+src-git libremesh https://github.com/libremesh/lime-packages.git;master \n\
+src-git profiles https://github.com/libremesh/network-profiles.git" >> feeds.conf \
+  && ./scripts/feeds update -a \
+  && ./scripts/feeds install -a
+
+# download kernel (121MB) and default_packages (59MB) and archives related to lime-packages
+RUN echo "\n\
+\nCONFIG_DEVEL=y \
+\nCONFIG_ALL_KMODS=y \
+\nCONFIG_PACKAGE_profile-libremesh-suggested-packages=y" > .config \
+  && make defconfig \
+  && make target/linux/download \
+  && make package/download \
+  && rm -rf .config staging_dir/target* staging_dir/toolchain* bin/*
