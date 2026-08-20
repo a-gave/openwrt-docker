@@ -34,3 +34,9 @@ rm -vrf sha256sums{,_min,.asc} keys/
 
 tar xf "$file_name" --strip=1 --no-same-owner -C .
 rm -vrf "$file_name"
+
+# alpine
+if [ "$(which apk)" ]; then
+	mkdir /builder/tmp
+	echo "export LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:/builder/staging_dir/host/lib/" >> /builder/.bashrc
+fi
