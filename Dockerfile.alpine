@@ -58,6 +58,9 @@ ARG RUN_SETUP=0
 ENV RUN_SETUP=$RUN_SETUP
 RUN if [ "$RUN_SETUP" -eq 1 ]; then /builder/setup.sh; fi
 
+ENV LD_LIBRARY_PATH=/builder/staging_dir/host/lib/
+RUN mkdir -p /builder/tmp
+
 ENTRYPOINT [ ]
 
 # required to have CMD as ENV to be executed
